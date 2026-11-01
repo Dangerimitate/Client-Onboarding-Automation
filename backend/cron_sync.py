@@ -6,7 +6,7 @@ Usage:
     python backend/cron_sync.py
 
 Example Crontab on AWS EC2 (runs every 5 minutes):
-    */5 * * * * /var/www/ca-onboarding/venv/bin/python /var/www/ca-onboarding/backend/cron_sync.py >> /var/log/ca-sync.log 2>&1
+    */30 * * * * /var/www/ca-onboarding/venv/bin/python /var/www/ca-onboarding/backend/cron_sync.py >> /var/log/ca-sync.log 2>&1
 """
 import sys
 import os
