@@ -113,6 +113,10 @@ def update_checklist_item(checklist_id):
             for d in doc_rows
         )
 
+        if received == 0:
+            # When marked Wrong: immediately draft / update follow-up email requesting re-submission
+            NotificationService.draft_followup_and_reminders(conn, client_id, force_update_if_exists=True)
+
         if client and client["status"] == "onboarded":
             # If already onboarded, only update status if checklist becomes incomplete or flagged
             if not is_complete or has_critical:
@@ -131,10 +135,16 @@ def update_checklist_item(checklist_id):
 
         updated_item = ChecklistModel.get_by_id(conn, checklist_id)
         updated_client = ClientModel.get_by_id(conn, client_id)
+        if updated_client:
+            updated_client["messages"] = MessageModel.get_by_client_id(conn, client_id)
+            updated_client["checklist"] = ChecklistModel.get_by_client_id(conn, client_id)
+            updated_client["documents"] = DocumentModel.get_by_client_id(conn, client_id)
+            updated_client["activity"] = ActivityModel.get_by_client_id(conn, client_id)
 
         return jsonify({
             "ok": True,
             "checklist_item": updated_item,
+            "client": updated_client,
             "client_status": updated_client["status"] if updated_client else None,
             "message": f"'{doc_type}' marked as {status_label}."
         })

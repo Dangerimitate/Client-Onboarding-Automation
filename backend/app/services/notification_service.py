@@ -6,10 +6,10 @@ from ..models.message_model import MessageModel
 from ..models.activity_model import ActivityModel
 
 class NotificationService:
-    @staticmethod
-    def draft_followup_and_reminders(conn, client_id: str):
+    @classmethod
+    def draft_followup_and_reminders(cls, conn, client_id: str, force_update_if_exists: bool = False):
         """
-        Auto-drafts follow-up Email and WhatsApp messages asking for missing documents,
+        Auto-drafts follow-up Email and WhatsApp messages asking for missing or rejected documents,
         along with a scheduled reminder after 3 days.
         Crucial: All messages remain in 'draft' or 'scheduled' status until approved by staff.
         """
@@ -25,25 +25,33 @@ class NotificationService:
         service = client.get("service") or "Requested Service"
 
         # 1. Email Draft
-        subject = f"Documents Required for {service} Onboarding – {name}"
+        subject = f"Action Required: Pending Documents for {service} Onboarding – {name}"
         bullet_docs = "\n".join([f"  • {d}" for d in missing])
         email_body = f"""Dear {name},
 
-Thank you for choosing our CA firm for your {service} requirements.
+Thank you for choosing our CA firm for your {service} onboarding.
 
-To proceed with your onboarding and file your compliance on time, we kindly request the following remaining documents:
+Our compliance team reviewed your submission and noticed that the following required document(s) are still pending verification or require a clear re-submission:
 
 {bullet_docs}
 
-Please reply with the attached documents or upload them directly via our secure client portal.
+Please reply directly to this email with updated attachments or upload them via the client portal at your earliest convenience so we can finalize your onboarding.
 
 Warm regards,
 Client Onboarding Team
 CA Firm & Associates"""
 
-        if not MessageModel.exists_draft(conn, client_id, channel="email", status="draft"):
+        existing_email_draft = conn.execute(
+            "SELECT id FROM messages WHERE client_id = ? AND channel = 'email' AND status = 'draft'",
+            (client_id,)
+        ).fetchone()
+
+        if not existing_email_draft:
             MessageModel.create(conn, client_id, channel="email", subject=subject, body=email_body, status="draft")
-            ActivityModel.log(conn, client_id, "message_drafted", f"Auto-drafted follow-up email for {len(missing)} missing documents.")
+            ActivityModel.log(conn, client_id, "message_drafted", f"Auto-drafted follow-up email for {len(missing)} pending/rejected documents ({', '.join(missing)}).")
+        elif force_update_if_exists:
+            MessageModel.update_content(conn, existing_email_draft["id"], subject, email_body)
+            ActivityModel.log(conn, client_id, "message_updated", f"Updated follow-up email draft with {len(missing)} pending/rejected documents ({', '.join(missing)}).")
 
         # 2. WhatsApp Draft
         wa_docs = "\n".join([f"📄 {d}" for d in missing])
@@ -56,8 +64,15 @@ We are still awaiting the following documents to initiate your work:
 
 Please share clear photos or PDF scans here at your convenience. Thank you! 🙏"""
 
-        if not MessageModel.exists_draft(conn, client_id, channel="whatsapp", status="draft"):
+        existing_wa_draft = conn.execute(
+            "SELECT id FROM messages WHERE client_id = ? AND channel = 'whatsapp' AND status = 'draft'",
+            (client_id,)
+        ).fetchone()
+
+        if not existing_wa_draft:
             MessageModel.create(conn, client_id, channel="whatsapp", subject=f"WhatsApp Reminder – {name}", body=wa_body, status="draft")
+        elif force_update_if_exists:
+            MessageModel.update_content(conn, existing_wa_draft["id"], f"WhatsApp Reminder – {name}", wa_body)
 
         # 3. Scheduled Follow-up Reminder (3 days later)
         reminder_time = (datetime.datetime.now() + datetime.timedelta(days=3)).isoformat()
