@@ -9,6 +9,8 @@ The system automates the end-to-end client intake lifecycle: ingesting client em
 ## 📑 Table of Contents
 1. [🎥 2-3 Minute Working Video Demonstration](#-2-3-minute-working-video-demonstration)
 2. [⚡ Setup & Installation](#-setup--installation)
+   - [Local Development Setup](#local-development-setup)
+   - [☁️ AWS Cloud Production Deployment Guide](#️-aws-cloud-production-deployment-guide-100-free-tier)
 3. [🎯 Handling Failure Cases & Edge Cases (Rubric Requirements)](#-handling-failure-cases--edge-cases)
    - [Case 1: Blurry Scan / Low OCR Confidence](#1-blurry-scan--low-ocr-confidence-scan_rohan_blurrypng)
    - [Case 2: Duplicate Client Detection & Attachment Merge](#2-duplicate-client-detection--attachment-merge-email-4)
@@ -84,6 +86,152 @@ npm install
 npm start
 ```
 Open **`http://localhost:4200`** in your browser.
+
+---
+
+### ☁️ AWS Cloud Production Deployment Guide (100% Free Tier)
+
+This platform is configured for production hosting on **Amazon Web Services (AWS)** using standard, secure enterprise patterns.
+
+#### Architecture:
+- **Compute:** AWS EC2 (`t2.micro` – Free Tier eligible, 750 hrs/month) on Ubuntu 24.04 LTS.
+- **Web Server / Reverse Proxy:** Nginx (serves compiled Angular 17+ static build & reverse-proxies `/api` and `/uploads`).
+- **Application Server:** Gunicorn multi-worker WSGI running Flask MVC.
+- **Process Supervisor:** Linux Systemd (daemon with auto-restart on reboot/crash).
+- **SSL / HTTPS:** Free automated SSL certificate with Let's Encrypt (Certbot).
+
+---
+
+#### Step 1: EC2 Instance & Security Groups
+1. Launch an **Ubuntu 24.04 LTS** EC2 instance on **`t2.micro`** with **16–20 GB gp3** storage.
+2. In **Security Groups**, allow inbound traffic on:
+   - **SSH (Port 22)**: from your IP or `0.0.0.0/0`.
+   - **HTTP (Port 80)**: from `0.0.0.0/0`.
+   - **HTTPS (Port 443)**: from `0.0.0.0/0`.
+
+#### Step 2: System Packages & Swap Memory
+Connect via SSH and configure the system:
+```bash
+# 1. Update OS and install runtime packages
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv git nginx tesseract-ocr libtesseract-dev
+
+# 2. Install Node.js 20 LTS
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 3. Add 2GB Swap Memory (ensures Angular builds complete smoothly on 1GB RAM)
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+```
+
+#### Step 3: Clone Repository & Setup Backend
+```bash
+cd /home/ubuntu
+git clone <YOUR_GITHUB_REPOSITORY_URL> .
+
+# Setup Python Virtual Environment
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+deactivate
+```
+
+#### Step 4: Build Angular Frontend
+```bash
+cd /home/ubuntu/frontend
+npm install
+npm run build -- --configuration production
+cd /home/ubuntu
+```
+
+#### Step 5: Configure Gunicorn Background Daemon
+Create the systemd service file:
+```bash
+sudo nano /etc/systemd/system/ca-backend.service
+```
+Add the following configuration:
+```ini
+[Unit]
+Description=CA Onboarding OS - Flask Gunicorn Daemon
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/backend
+Environment="PATH=/home/ubuntu/venv/bin"
+Environment="FLASK_ENV=production"
+ExecStart=/home/ubuntu/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 run:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ca-backend
+sudo systemctl start ca-backend
+```
+
+#### Step 6: Configure Nginx Reverse Proxy
+Create the Nginx site configuration:
+```bash
+sudo nano /etc/nginx/sites-available/ca-onboarding
+```
+Add the following configuration:
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    # 1. Frontend: Serve Angular static SPA files
+    root /home/ubuntu/frontend/dist/frontend/browser;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 2. Backend API: Proxy to Gunicorn
+    location /api/ {
+        proxy_pass http://127.0.0.1:5000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 25M;
+    }
+
+    # 3. Uploads: Document preview and download proxy
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:5000/uploads/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+Enable the site and reload Nginx:
+```bash
+chmod 755 /home/ubuntu
+sudo ln -sf /etc/nginx/sites-available/ca-onboarding /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### Step 7: (Optional) SSL / HTTPS with Let's Encrypt
+If you point a domain to your EC2 public IP:
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
 
 ---
 
