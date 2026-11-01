@@ -7,16 +7,35 @@ The system automates the end-to-end client intake lifecycle: ingesting client em
 ---
 
 ## 📑 Table of Contents
-1. [⚡ Setup & Installation](#-setup--installation)
-2. [🎯 Handling Failure Cases & Edge Cases (Rubric Requirements)](#-handling-failure-cases--edge-cases)
+1. [🎥 2-3 Minute Working Video Demonstration](#-2-3-minute-working-video-demonstration)
+2. [⚡ Setup & Installation](#-setup--installation)
+3. [🎯 Handling Failure Cases & Edge Cases (Rubric Requirements)](#-handling-failure-cases--edge-cases)
    - [Case 1: Blurry Scan / Low OCR Confidence](#1-blurry-scan--low-ocr-confidence-scan_rohan_blurrypng)
    - [Case 2: Duplicate Client Detection & Attachment Merge](#2-duplicate-client-detection--attachment-merge-email-4)
    - [Case 3: Wrong / Irrelevant Document Submission](#3-wrong--irrelevant-document-submission-electricity-bill)
    - [Case 4: Invalid Document Format & Data Mismatch](#4-invalid-document-format--data-mismatch)
    - [Case 5: Staff Manual Override (OCR Judgement Correction)](#5-staff-manual-override-ocr-judgement-correction)
-3. [🏗️ Design Choices & Architecture](#️-design-choices--architecture)
-4. [⚠️ System Limitations & Future Roadmap](#️-system-limitations--future-roadmap)
-5. [🎬 2-3 Minute Video Recording Storyboard & Script](#-2-3-minute-video-recording-storyboard--script)
+4. [🏗️ Design Choices & Architecture](#️-design-choices--architecture)
+5. [⚠️ System Limitations & Future Roadmap](#️-system-limitations--future-roadmap)
+6. [🎬 Video Recording Storyboard & Script](#-video-recording-storyboard--script)
+
+---
+
+## 🎥 2-3 Minute Working Video Demonstration
+
+> 📺 **Video Walkthrough:** Demonstrating the end-to-end client onboarding lifecycle, live email sync, document OCR extraction, and comprehensive handling of all failure cases (blurry scans, duplicate client merge, wrong document rejection, and CA staff manual overrides).
+
+[![Watch the CA Onboard Demo Video](https://img.shields.io/badge/▶%EF%B8%8F_Watch_Demo_Video-2--3_Min_Walkthrough-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](YOUR_VIDEO_URL_HERE)
+
+- 🔗 **Direct Video Link:** [Click here to watch the full demo](YOUR_VIDEO_URL_HERE)
+- 📌 **Video Flow Covered:**
+  1. **Live Email Ingestion & Dashboard:** Real-time metrics and dynamic intake.
+  2. **Failure Case 1 (Blurry Scan):** Low-confidence OCR detection (<60%) triggering automated client re-upload requests.
+  3. **Failure Case 2 (Duplicate Client):** Merging follow-up attachments into an existing profile without duplicate records.
+  4. **Failure Case 3 (Wrong Document):** Electricity bill rejection with statutory compliance flags.
+  5. **Failure Case 4 (Staff Override):** "Mark Correct" / "Mark Wrong" actions overriding OCR misjudgements.
+  6. **Human-in-the-Loop Safeguard:** Reviewing and approving auto-drafted communications before dispatch.
+  7. **Single-Action Flow & Audit Trail:** Transitioning client to `Onboarded` and inspecting the immutable event log.
 
 ---
 
