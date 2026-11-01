@@ -4,6 +4,7 @@ from ..models.client_model import ClientModel
 from ..models.checklist_model import ChecklistModel
 from ..models.message_model import MessageModel
 from ..models.activity_model import ActivityModel
+from ..utils import now_iso
 
 class NotificationService:
     @classmethod
@@ -41,17 +42,33 @@ Warm regards,
 Client Onboarding Team
 CA Firm & Associates"""
 
-        existing_email_draft = conn.execute(
-            "SELECT id FROM messages WHERE client_id = ? AND channel = 'email' AND status = 'draft'",
+        # 1. Email Draft: if already sent or approved, return it to 'draft' status with updated content
+        existing_emails = conn.execute(
+            "SELECT id, status FROM messages WHERE client_id = ? AND channel = 'email' ORDER BY created_at DESC",
             (client_id,)
-        ).fetchone()
+        ).fetchall()
 
-        if not existing_email_draft:
+        if existing_emails:
+            primary_id = existing_emails[0]["id"]
+            prev_status = existing_emails[0]["status"]
+            conn.execute(
+                """UPDATE messages 
+                   SET status = 'draft', subject = ?, body = ?, 
+                       approved_by = NULL, approved_at = NULL, sent_at = NULL, created_at = ?
+                   WHERE id = ?""",
+                (subject, email_body, now_iso(), primary_id)
+            )
+            # Remove any duplicate email rows for this client to keep communications clean
+            for extra in existing_emails[1:]:
+                conn.execute("DELETE FROM messages WHERE id = ?", (extra["id"],))
+
+            if prev_status == "sent":
+                ActivityModel.log(conn, client_id, "message_drafted", f"Returned sent email back to draft: New rejected/pending documents required ({', '.join(missing)}).")
+            else:
+                ActivityModel.log(conn, client_id, "message_updated", f"Updated follow-up email draft with {len(missing)} pending/rejected documents ({', '.join(missing)}).")
+        else:
             MessageModel.create(conn, client_id, channel="email", subject=subject, body=email_body, status="draft")
             ActivityModel.log(conn, client_id, "message_drafted", f"Auto-drafted follow-up email for {len(missing)} pending/rejected documents ({', '.join(missing)}).")
-        elif force_update_if_exists:
-            MessageModel.update_content(conn, existing_email_draft["id"], subject, email_body)
-            ActivityModel.log(conn, client_id, "message_updated", f"Updated follow-up email draft with {len(missing)} pending/rejected documents ({', '.join(missing)}).")
 
         # 2. WhatsApp Draft
         wa_docs = "\n".join([f"📄 {d}" for d in missing])
@@ -64,15 +81,24 @@ We are still awaiting the following documents to initiate your work:
 
 Please share clear photos or PDF scans here at your convenience. Thank you! 🙏"""
 
-        existing_wa_draft = conn.execute(
-            "SELECT id FROM messages WHERE client_id = ? AND channel = 'whatsapp' AND status = 'draft'",
+        existing_was = conn.execute(
+            "SELECT id, status FROM messages WHERE client_id = ? AND channel = 'whatsapp' ORDER BY created_at DESC",
             (client_id,)
-        ).fetchone()
+        ).fetchall()
 
-        if not existing_wa_draft:
+        if existing_was:
+            primary_wa_id = existing_was[0]["id"]
+            conn.execute(
+                """UPDATE messages 
+                   SET status = 'draft', subject = ?, body = ?, 
+                       approved_by = NULL, approved_at = NULL, sent_at = NULL, created_at = ?
+                   WHERE id = ?""",
+                (f"WhatsApp Reminder – {name}", wa_body, now_iso(), primary_wa_id)
+            )
+            for extra in existing_was[1:]:
+                conn.execute("DELETE FROM messages WHERE id = ?", (extra["id"],))
+        else:
             MessageModel.create(conn, client_id, channel="whatsapp", subject=f"WhatsApp Reminder – {name}", body=wa_body, status="draft")
-        elif force_update_if_exists:
-            MessageModel.update_content(conn, existing_wa_draft["id"], f"WhatsApp Reminder – {name}", wa_body)
 
         # 3. Scheduled Follow-up Reminder (3 days later)
         reminder_time = (datetime.datetime.now() + datetime.timedelta(days=3)).isoformat()

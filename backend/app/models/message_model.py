@@ -4,7 +4,19 @@ from ..utils import uid, now_iso
 class MessageModel:
     @staticmethod
     def get_by_client_id(conn, client_id: str) -> List[Dict]:
-        rows = conn.execute("SELECT * FROM messages WHERE client_id = ? ORDER BY created_at", (client_id,)).fetchall()
+        rows = conn.execute(
+            """SELECT * FROM messages 
+               WHERE client_id = ? 
+               ORDER BY 
+                 CASE status 
+                   WHEN 'draft' THEN 1 
+                   WHEN 'approved' THEN 2 
+                   WHEN 'scheduled' THEN 3 
+                   ELSE 4 
+                 END, 
+                 created_at DESC""",
+            (client_id,)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     @staticmethod
