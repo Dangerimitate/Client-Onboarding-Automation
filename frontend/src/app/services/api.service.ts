@@ -7,8 +7,9 @@ import { ClientRecord, DashboardStats, MessageItem, InboxSettingsResponse } from
   providedIn: 'root'
 })
 export class ApiService {
-  private readonly baseUrl = 'http://localhost:5000/api';
-  readonly uploadBaseUrl = 'http://localhost:5000/uploads';
+  private readonly isDev = typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '4200';
+  private readonly baseUrl = this.isDev ? 'http://localhost:5000/api' : '/api';
+  readonly uploadBaseUrl = this.isDev ? 'http://localhost:5000/uploads' : '/uploads';
 
   constructor(private http: HttpClient) {}
 
