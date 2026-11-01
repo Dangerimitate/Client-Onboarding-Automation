@@ -25,11 +25,11 @@ class ClientModel:
     @staticmethod
     def find_duplicate(conn, email: Optional[str] = None, pan: Optional[str] = None) -> Optional[Dict]:
         if email:
-            row = conn.execute("SELECT id, name FROM clients WHERE email = ?", (email,)).fetchone()
+            row = conn.execute("SELECT id, name, email, status, service, pan FROM clients WHERE email = ?", (email,)).fetchone()
             if row:
                 return dict(row)
         if pan:
-            row = conn.execute("SELECT id, name FROM clients WHERE pan = ?", (pan,)).fetchone()
+            row = conn.execute("SELECT id, name, email, status, service, pan FROM clients WHERE pan = ?", (pan,)).fetchone()
             if row:
                 return dict(row)
         return None

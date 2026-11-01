@@ -174,11 +174,30 @@ class IngestionService:
 
         upload_dir.mkdir(parents=True, exist_ok=True)
 
+        existing_doc_rows = DocumentModel.get_by_client_id(conn, client_id)
+        already_ingested_files = {d["filename"] for d in existing_doc_rows}
+        new_attachments_processed = 0
+
         # Process incoming attachments
         for att in attachments:
             if isinstance(att, str):
-                # String filename from sample_pack
                 att_file = att
+            elif isinstance(att, dict):
+                att_file = att.get("filename", "")
+            else:
+                continue
+
+            if not att_file:
+                continue
+
+            # Prevent duplicate re-ingestion if this attachment filename was already processed for this client
+            if att_file in already_ingested_files:
+                continue
+
+            already_ingested_files.add(att_file)
+
+            if isinstance(att, str):
+                # String filename from sample_pack
                 if not sample_dir:
                     continue
                 att_path = sample_dir / att_file
@@ -189,12 +208,11 @@ class IngestionService:
                 shutil.copy2(str(att_path), str(dest))
             elif isinstance(att, dict):
                 # Live attachment bytes from IMAP
-                att_file = att["filename"]
                 dest = upload_dir / f"{client_id}_{att_file}"
                 with open(dest, "wb") as f:
                     f.write(att["bytes"])
-            else:
-                continue
+
+            new_attachments_processed += 1
 
             # Run OCR extraction & field validation
             doc_type, fields, confidence, doc_flags = OCRService.process_document(
@@ -276,7 +294,15 @@ class IngestionService:
                 deduped_flags.append(f)
         ClientModel.update_flags(conn, client_id, deduped_flags)
 
-        if has_critical:
+        # Check current client status before modifying to preserve completed onboarding
+        curr_client = ClientModel.get_by_id(conn, client_id)
+        current_status = curr_client.get("status") if curr_client else "new"
+
+        if current_status == "onboarded":
+            # Client has already been fully onboarded by CA staff.
+            # Never demote their status back to ready_for_review, needs_review, or docs_pending!
+            pass
+        elif has_critical:
             ClientModel.update_status(conn, client_id, "needs_review")
         else:
             if ChecklistService.is_checklist_complete(conn, client_id):

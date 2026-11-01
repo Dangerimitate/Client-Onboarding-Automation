@@ -113,14 +113,19 @@ def update_checklist_item(checklist_id):
             for d in doc_rows
         )
 
-        if is_complete and not has_critical:
-            ClientModel.update_status(conn, client_id, "ready_for_review")
-            NotificationService.cancel_pending_reminders_if_complete(conn, client_id)
-        elif is_complete and has_critical:
-            ClientModel.update_status(conn, client_id, "needs_review")
+        if client and client["status"] == "onboarded":
+            # If already onboarded, only update status if checklist becomes incomplete or flagged
+            if not is_complete or has_critical:
+                ClientModel.update_status(conn, client_id, "needs_review")
         else:
-            if client and client["status"] == "ready_for_review":
-                ClientModel.update_status(conn, client_id, "docs_pending")
+            if is_complete and not has_critical:
+                ClientModel.update_status(conn, client_id, "ready_for_review")
+                NotificationService.cancel_pending_reminders_if_complete(conn, client_id)
+            elif is_complete and has_critical:
+                ClientModel.update_status(conn, client_id, "needs_review")
+            else:
+                if client and client["status"] == "ready_for_review":
+                    ClientModel.update_status(conn, client_id, "docs_pending")
 
         conn.commit()
 

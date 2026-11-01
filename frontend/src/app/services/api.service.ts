@@ -11,7 +11,7 @@ export class ApiService {
   private readonly baseUrl = environment.apiUrl;
   readonly uploadBaseUrl = environment.uploadUrl;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   getClients(): Observable<ClientRecord[]> {
     return this.http.get<ClientRecord[]>(`${this.baseUrl}/clients`);
