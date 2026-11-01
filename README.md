@@ -1,5 +1,11 @@
 # 🏢 CA Onboard – Enterprise Client Onboarding & Compliance Automation OS
 
+[![Live on AWS](https://img.shields.io/badge/🌐_Live_Deployment-AWS_EC2-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](http://54.197.24.246)
+[![Watch Demo Video](https://img.shields.io/badge/▶%EF%B8%8F_Watch_Demo_Video-2--3_Min_Walkthrough-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://drive.google.com/file/d/1S8J7PndJGM4ljfTsBYPt_jxtSqi26KgI/view?usp=drive_link)
+
+> 🚀 **Live Production Application:** [http://54.197.24.246](http://54.197.24.246)  
+> 📺 **Video Demonstration:** [Google Drive Walkthrough](https://drive.google.com/file/d/1S8J7PndJGM4ljfTsBYPt_jxtSqi26KgI/view?usp=drive_link)
+
 An enterprise-grade client onboarding automation platform designed for Chartered Accountant (CA) firms, built with an **Angular 17+ Frontend** and a **Python Flask MVC (Model-View-Controller) Backend**.
 
 The system automates the end-to-end client intake lifecycle: ingesting client emails (sample pack or live IMAP sync), extracting identity and tax data from documents (PAN, Aadhaar, GSTIN, Bank Statements, Form 16, Investment Proofs), enforcing dynamic service-specific checklists, auto-drafting follow-up communications, and providing **strict human-in-the-loop approval safeguards** before any client message is dispatched.
@@ -91,7 +97,9 @@ Open **`http://localhost:4200`** in your browser.
 
 ### ☁️ AWS Cloud Production Deployment Guide (100% Free Tier)
 
-This platform is configured for production hosting on **Amazon Web Services (AWS)** using standard, secure enterprise patterns.
+> 🌐 **Live EC2 Production Instance:** [http://54.197.24.246](http://54.197.24.246)
+
+This platform is configured and deployed for production hosting on **Amazon Web Services (AWS)** using standard, secure enterprise patterns.
 
 #### Architecture:
 - **Compute:** AWS EC2 (`t2.micro` – Free Tier eligible, 750 hrs/month) on Ubuntu 24.04 LTS.
