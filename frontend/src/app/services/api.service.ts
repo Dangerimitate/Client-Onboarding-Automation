@@ -2,14 +2,14 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ClientRecord, DashboardStats, MessageItem, InboxSettingsResponse } from '../models/onboarding.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private readonly isDev = typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '4200';
-  private readonly baseUrl = this.isDev ? 'http://localhost:5000/api' : '/api';
-  readonly uploadBaseUrl = this.isDev ? 'http://localhost:5000/uploads' : '/uploads';
+  private readonly baseUrl = environment.apiUrl;
+  readonly uploadBaseUrl = environment.uploadUrl;
 
   constructor(private http: HttpClient) {}
 
