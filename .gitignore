@@ -1,0 +1,88 @@
+# ==========================================
+# CA Onboarding OS - Git Ignore Configuration
+# ==========================================
+
+# 1. Environment & Local Secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
+
+# 2. Database & Local State (Keep credentials safe)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+onboarding.db
+
+# 3. Runtime Uploads (Preserve directory with .gitkeep)
+uploads/*
+!uploads/.gitkeep
+
+# 4. Python Bytecode & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env/
+.pytest_cache/
+
+# 5. Node & Angular Frontend
+node_modules/
+frontend/node_modules/
+frontend/.angular/
+frontend/dist/
+dist/
+.angular/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 6. IDEs & Editors
+.vscode/
+frontend/.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# 7. Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 8. Temporary Test Scaffolding
+test_*.py
+inspect_*.py
+resync_*.py

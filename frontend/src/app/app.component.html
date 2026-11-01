@@ -1,0 +1,955 @@
+<div class="app-container">
+  <!-- Toast Alert -->
+  <div class="toast-banner" *ngIf="actionMessage">
+    <i class="fa-solid fa-circle-info"></i>
+    <span>{{ actionMessage }}</span>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-logo">
+        <i class="fa-solid fa-scale-balanced"></i>
+      </div>
+      <div>
+        <div class="brand-title">CA ONBOARD · AUTOMATION OS</div>
+        <div class="brand-subtitle">Industrial Client Intake, OCR Extraction & Approval Dashboard</div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="header-actions">
+      <!-- Direct Email Live Sync -->
+      <button class="btn btn-live-inbox" [class.configured]="inboxSettings?.configured" (click)="syncLiveInbox()"
+        [disabled]="isSyncingInbox || loading"
+        title="Connect directly to mail server to fetch incoming client onboarding emails">
+        <i class="fa-solid fa-satellite-dish" [class.fa-spin]="isSyncingInbox"></i>
+        <span>{{ isSyncingInbox ? 'Syncing Inbox...' : 'Live Email Sync' }}</span>
+        <span class="live-dot" [class.active]="inboxSettings?.configured"></span>
+      </button>
+
+      <!-- Email Settings Button -->
+      <button class="btn btn-outline" (click)="openInboxModal()" title="Configure Production Email Inbox (IMAP)">
+        <i class="fa-solid fa-gear"></i>
+        <span>Email Setup</span>
+      </button>
+
+      <!-- Ingest Sample Pack -->
+      <button class="btn btn-primary" (click)="triggerIngestion()" [disabled]="loading"
+        title="Process test emails from Adams_sample_pack folder">
+        <i class="fa-solid fa-folder-open" [class.fa-spin]="loading"></i>
+        <span>Ingest Sample Emails</span>
+      </button>
+
+      <!-- Reset -->
+      <button class="btn btn-outline" (click)="triggerReset()" title="Reset database to empty state"
+        [disabled]="loading">
+        <i class="fa-solid fa-arrow-rotate-left"></i>
+        <span>Reset DB</span>
+      </button>
+
+      <div class="staff-badge">
+        <i class="fa-solid fa-user-shield"></i>
+        <span>Staff CA</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Quick Metrics Counter Strip -->
+  <div class="quick-metrics-strip" *ngIf="stats">
+    <div class="metrics-group">
+      <button type="button" class="metric-card total"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'all'" (click)="filterByStatus('all')"
+        title="View all clients in pipeline">
+        <div class="metric-icon-box"><i class="fa-solid fa-users"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.total_clients }}</span>
+          <span class="metric-lbl">Total Clients</span>
+        </div>
+      </button>
+
+      <!-- 1. New Intake -->
+      <button type="button" class="metric-card info"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'new'" (click)="filterByStatus('new')"
+        title="Filter: Newly Ingested Clients">
+        <div class="metric-icon-box"><i class="fa-solid fa-sparkles"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.by_status['new'] || 0 }}</span>
+          <span class="metric-lbl">New Intake</span>
+        </div>
+      </button>
+
+      <!-- 2. Docs Pending -->
+      <button type="button" class="metric-card warning"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'docs_pending'"
+        (click)="filterByStatus('docs_pending')" title="Filter: Documents Pending">
+        <div class="metric-icon-box"><i class="fa-solid fa-hourglass-half"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.by_status['docs_pending'] || 0 }}</span>
+          <span class="metric-lbl">Docs Pending</span>
+        </div>
+      </button>
+
+      <button type="button" class="metric-card primary"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'ready_for_review'"
+        (click)="filterByStatus('ready_for_review')" title="Filter: Ready for Review">
+        <div class="metric-icon-box"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.by_status['ready_for_review'] || 0 }}</span>
+          <span class="metric-lbl">Ready for Review</span>
+        </div>
+      </button>
+
+      <button type="button" class="metric-card danger" *ngIf="(stats.by_status['needs_review'] || 0) > 0"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'needs_review'"
+        (click)="filterByStatus('needs_review')" title="Filter: Attention Required">
+        <div class="metric-icon-box"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.by_status['needs_review'] }}</span>
+          <span class="metric-lbl">Needs Review</span>
+        </div>
+      </button>
+
+      <button type="button" class="metric-card success"
+        [class.active]="activeTab === 'pipeline' && selectedStatusFilter === 'onboarded'"
+        (click)="filterByStatus('onboarded')" title="Filter: Onboarded Clients">
+        <div class="metric-icon-box"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.by_status['onboarded'] || 0 }}</span>
+          <span class="metric-lbl">Onboarded</span>
+        </div>
+      </button>
+    </div>
+
+    <div class="metrics-separator"></div>
+
+    <div class="views-group">
+      <button type="button" class="metric-card view-card alert" [class.active]="activeTab === 'approvals'"
+        (click)="activeTab = 'approvals'" title="Open Human Message Approval Center">
+        <div class="metric-icon-box"><i class="fa-solid fa-shield-halved"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.pending_messages || 0 }}</span>
+          <span class="metric-lbl">Approval Center</span>
+        </div>
+        <span class="metric-badge alert" *ngIf="stats.pending_messages">{{ stats.pending_messages }} Pending</span>
+      </button>
+
+      <button type="button" class="metric-card view-card info" [class.active]="activeTab === 'documents'"
+        (click)="activeTab = 'documents'" title="Open Document OCR Intelligence Hub">
+        <div class="metric-icon-box"><i class="fa-solid fa-file-shield"></i></div>
+        <div class="metric-text">
+          <span class="metric-val">{{ stats.total_documents || 0 }}</span>
+          <span class="metric-lbl">OCR Intelligence</span>
+        </div>
+        <span class="metric-badge warning" *ngIf="stats.flagged_documents">{{ stats.flagged_documents }} Flagged</span>
+      </button>
+
+      <!-- <button type="button" class="metric-card view-card neutral" [class.active]="activeTab === 'audit'" (click)="activeTab = 'audit'" title="View Immutable System Audit Trail">
+        <div class="metric-icon-box"><i class="fa-solid fa-clock-rotate-left"></i></div>
+        <div class="metric-text">
+          <span class="metric-val"><i class="fa-solid fa-list-check"></i></span>
+          <span class="metric-lbl">Audit Trail</span>
+        </div>
+      </button> -->
+    </div>
+  </div>
+
+  <!-- Main View Area -->
+  <main class="main-content">
+
+    <!-- ==================== TAB 1: PIPELINE TRACKER ==================== -->
+    <section *ngIf="activeTab === 'pipeline'" class="tab-pane animate-fade-in">
+      <!-- Search & Filters Toolbar -->
+      <div class="toolbar-card">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" [(ngModel)]="searchQuery" placeholder="Search by client name, email, PAN..." />
+        </div>
+
+        <div class="filter-group">
+          <label>Status:</label>
+          <select [(ngModel)]="selectedStatusFilter">
+            <option value="all">All Statuses</option>
+            <option value="needs_review">⚠️ Attention Required</option>
+            <option value="docs_pending">⏳ Docs Pending</option>
+            <option value="ready_for_review">🔍 Ready for Review</option>
+            <option value="onboarded">✅ Onboarded</option>
+            <option value="new">🆕 New</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>Service:</label>
+          <select [(ngModel)]="selectedServiceFilter">
+            <option value="all">All Services</option>
+            <option value="ITR">ITR Filing</option>
+            <option value="GST">GST Registration & Filing</option>
+            <option value="Audit">Statutory / Tax Audit</option>
+          </select>
+        </div>
+
+        <div class="results-count">
+          Showing {{ filteredClients.length }} of {{ clients.length }} clients
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" *ngIf="filteredClients.length === 0">
+        <i class="fa-solid fa-inbox"></i>
+        <h3>No clients found</h3>
+        <p>Click "Ingest Sample Emails" above to simulate incoming emails and attachments.</p>
+        <button class="btn btn-primary" (click)="triggerIngestion()">
+          <i class="fa-solid fa-cloud-arrow-down"></i> Ingest Now
+        </button>
+      </div>
+
+      <!-- Clients List -->
+      <div class="clients-list" *ngIf="filteredClients.length > 0">
+        <div class="client-card" *ngFor="let client of filteredClients"
+          [class.expanded]="expandedClientId === client.id">
+
+          <!-- Card Header & Summary -->
+          <div class="card-summary" (click)="toggleExpand(client.id)">
+            <div class="client-identity">
+              <div class="client-avatar">
+                {{ client.name ? client.name.charAt(0).toUpperCase() : 'C' }}
+              </div>
+              <div>
+                <div class="client-name-row">
+                  <h3 class="client-name">{{ client.name || 'Unnamed Client' }}</h3>
+                  <span class="badge" [ngClass]="'badge-service-' + client.service.toLowerCase()">
+                    {{ client.service }}
+                  </span>
+                  <span class="badge" [ngClass]="'badge-' + client.status">
+                    {{ formatStatus(client.status) }}
+                  </span>
+                </div>
+                <div class="client-meta-row">
+                  <span title="Email Address"><i class="fa-regular fa-envelope"></i> {{ client.email }}</span>
+                  <span *ngIf="client.phone" title="Phone"><i class="fa-solid fa-phone"></i> {{ client.phone }}</span>
+                  <span *ngIf="client.pan" class="mono" title="Permanent Account Number"><i
+                      class="fa-regular fa-id-card"></i> {{ client.pan }}</span>
+                  <span *ngIf="client.gstin" class="mono" title="GSTIN"><i class="fa-solid fa-building"></i> {{
+                    client.gstin }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Checklist Progress Indicator -->
+            <div class="checklist-progress">
+              <div class="progress-labels">
+                <span>Checklist</span>
+                <span class="progress-numbers">
+                  {{ getCompletedChecklistCount(client) }}/{{ getTotalChecklistCount(client) }} received
+                </span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-bar" [style.width.%]="getChecklistProgressPercent(client)"
+                  [class.complete]="getChecklistProgressPercent(client) === 100"></div>
+              </div>
+            </div>
+
+            <!-- Flags summary & Expand Chevron -->
+            <div class="card-trailing">
+              <div class="anomaly-pill" *ngIf="client.flags && client.flags.length > 0" title="Edge case flags present">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>{{ client.flags.length }} Alert</span>
+              </div>
+              <i class="fa-solid fa-chevron-down expand-chevron" [class.rotated]="expandedClientId === client.id"></i>
+            </div>
+          </div>
+
+          <!-- Anomalies / Edge Cases Warning Banner -->
+          <div class="card-alerts-banner" *ngIf="client.flags && client.flags.length > 0">
+            <div class="alert-item" *ngFor="let flag of client.flags">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span><strong>Edge Case Detected:</strong> {{ flag.issue || flag.message }}</span>
+            </div>
+          </div>
+
+          <!-- Expanded Details Section -->
+          <div class="card-details" *ngIf="expandedClientId === client.id">
+            <div class="details-grid">
+
+              <!-- 1. Document Checklist -->
+              <div class="detail-panel">
+                <div class="panel-header">
+                  <h4><i class="fa-solid fa-list-check"></i> Document Checklist ({{ client.service }})</h4>
+                  <span class="panel-status-tag">{{ getCompletedChecklistCount(client) }} of {{
+                    getTotalChecklistCount(client) }} Verified</span>
+                </div>
+                <div class="checklist-items">
+                  <div class="checklist-row" *ngFor="let item of client.checklist"
+                    [class.received]="item.received === 1">
+                    <div class="chk-status-icon">
+                      <i *ngIf="item.received === 1" class="fa-solid fa-circle-check text-success"></i>
+                      <i *ngIf="item.received === 0" class="fa-regular fa-circle text-warning"></i>
+                    </div>
+                    <span class="chk-name">{{ item.doc_type }}</span>
+                    <div class="chk-actions">
+                      <span class="chk-pill" [class.received-pill]="item.received === 1" [class.rejected-pill]="item.received === 0 && hasUploadedDoc(client, item.doc_type)">
+                        {{ item.received === 1 ? 'Received' : (hasUploadedDoc(client, item.doc_type) ? 'Flagged / Check Scan' : 'Pending Client') }}
+                      </span>
+                      <!-- CA Staff Manual Override: ONLY shown if document has actually been uploaded from client -->
+                      <ng-container *ngIf="hasUploadedDoc(client, item.doc_type)">
+                        <button *ngIf="item.received === 0" type="button" class="btn-chk-action btn-mark-correct"
+                          (click)="markChecklistItem(item, 1, client, $event)"
+                          title="Staff Override: Mark uploaded document as Verified / Correct (Override OCR)">
+                          <i class="fa-solid fa-check"></i> Mark Correct
+                        </button>
+                        <button *ngIf="item.received === 1" type="button" class="btn-chk-action btn-mark-wrong"
+                          (click)="markChecklistItem(item, 0, client, $event)"
+                          title="Staff Override: Mark uploaded document as Wrong / Rejected (Override OCR)">
+                          <i class="fa-solid fa-xmark"></i> Mark Wrong
+                        </button>
+                      </ng-container>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. OCR Extracted Documents & Quality Check -->
+              <div class="detail-panel">
+                <div class="panel-header">
+                  <h4><i class="fa-solid fa-file-lines"></i> Extracted Documents & Scans</h4>
+                  <span class="panel-status-tag">{{ client.documents?.length || 0 }} Files Attached</span>
+                </div>
+
+                <div class="empty-subtext" *ngIf="!client.documents || client.documents.length === 0">
+                  No document attachments uploaded yet.
+                </div>
+
+                <div class="doc-cards" *ngIf="client.documents && client.documents.length > 0">
+                  <div class="doc-item" *ngFor="let doc of client.documents">
+                    <div class="doc-header">
+                      <div class="doc-title-box">
+                        <i class="fa-regular fa-file-pdf" *ngIf="doc.filename.endsWith('.pdf')"></i>
+                        <i class="fa-regular fa-file-image" *ngIf="!doc.filename.endsWith('.pdf')"></i>
+                        <strong>{{ doc.doc_type }}</strong>
+                        <span class="doc-filename mono">({{ doc.filename }})</span>
+                      </div>
+                      <!-- OCR Confidence Meter -->
+                      <div class="confidence-tag" [class.low-conf]="doc.confidence < 0.60">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>OCR: {{ (doc.confidence * 100) | number:'1.0-0' }}%</span>
+                      </div>
+                    </div>
+
+                    <!-- Extracted Key Fields Table -->
+                    <div class="extracted-table" *ngIf="doc.extracted && (doc.extracted | json) !== '{}'">
+                      <div class="extracted-row" *ngFor="let field of doc.extracted | keyvalue">
+                        <span class="field-label">{{ formatFieldLabel(field.key) }}:</span>
+                        <span class="field-val mono">{{ field.value }}</span>
+                      </div>
+                    </div>
+
+                    <!-- OCR Quality / Document Flags -->
+                    <div class="doc-flags" *ngIf="doc.flags && doc.flags.length > 0">
+                      <div class="flag-msg" *ngFor="let f of doc.flags">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <span>{{ f.issue || f.message }}</span>
+                      </div>
+                    </div>
+
+                    <div class="doc-actions">
+                      <button type="button" class="btn-inspect-doc" (click)="openDocumentModal(doc)">
+                        <i class="fa-solid fa-eye"></i> Inspect Original File
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Lower Section: Communications & Audit Log -->
+            <div class="details-grid lower-grid">
+
+              <!-- 3. Auto-Drafted Follow-Up Messages -->
+              <div class="detail-panel">
+                <div class="panel-header">
+                  <h4><i class="fa-solid fa-paper-plane"></i> Follow-up Communications</h4>
+                  <span class="panel-status-tag">Human Approval Required</span>
+                </div>
+
+                <div class="empty-subtext" *ngIf="!client.messages || client.messages.length === 0">
+                  No communication drafted. All required documents are already verified!
+                </div>
+
+                <div class="messages-list" *ngIf="client.messages && client.messages.length > 0">
+                  <div class="message-card" *ngFor="let msg of client.messages">
+                    <div class="msg-header">
+                      <div class="msg-channel-tag" [class.wa]="msg.channel === 'whatsapp'">
+                        <i class="fa-regular fa-envelope" *ngIf="msg.channel === 'email'"></i>
+                        <i class="fa-brands fa-whatsapp" *ngIf="msg.channel === 'whatsapp'"></i>
+                        <span>{{ msg.channel | uppercase }}</span>
+                      </div>
+                      <span class="badge" [class.badge-docs_pending]="msg.status === 'draft'"
+                        [class.badge-ready_for_review]="msg.status === 'approved'"
+                        [class.badge-onboarded]="msg.status === 'sent'">
+                        {{ msg.status | uppercase }}
+                      </span>
+                    </div>
+                    <div class="msg-subject" *ngIf="msg.subject"><strong>Subject:</strong> {{ msg.subject }}</div>
+                    <div class="msg-body-preview">{{ msg.body }}</div>
+
+                    <!-- Approval Controls -->
+                    <div class="msg-actions">
+                      <button class="btn btn-xs btn-outline" (click)="startEditMessage(msg)">
+                        <i class="fa-solid fa-pencil"></i> Edit
+                      </button>
+                      <button *ngIf="msg.status === 'draft'" class="btn btn-xs btn-primary"
+                        (click)="approveMessage(msg)">
+                        <i class="fa-solid fa-check"></i> Approve Draft
+                      </button>
+                      <button *ngIf="msg.status === 'approved'" class="btn btn-xs btn-success"
+                        (click)="sendMessage(msg)">
+                        <i class="fa-solid fa-paper-plane" *ngIf="msg.channel === 'email'"></i>
+                        <i class="fa-brands fa-whatsapp" *ngIf="msg.channel === 'whatsapp'"></i>
+                        {{ msg.channel === 'whatsapp' ? 'Open & Send in WhatsApp' : 'Send to Client' }}
+                      </button>
+                      <a *ngIf="msg.channel === 'whatsapp' && (msg.status === 'approved' || msg.status === 'sent') && getWhatsAppUrl(msg, client)"
+                        [href]="getWhatsAppUrl(msg, client)" target="_blank" class="btn btn-xs btn-whatsapp"
+                        title="Open chat directly in WhatsApp Web">
+                        <i class="fa-brands fa-whatsapp"></i> Chat Link
+                      </a>
+                      <button *ngIf="msg.status === 'draft'" class="btn btn-xs btn-danger-outline"
+                        (click)="rejectMessage(msg)">
+                        <i class="fa-solid fa-xmark"></i> Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. Client Audit & Activity Trail -->
+              <div class="detail-panel">
+                <div class="panel-header">
+                  <h4><i class="fa-solid fa-timeline"></i> Activity & Audit Trail</h4>
+                  <span class="panel-status-tag">{{ client.activity?.length || 0 }} Log Entries</span>
+                </div>
+                <div class="activity-timeline">
+                  <div class="timeline-item" *ngFor="let act of client.activity">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                      <div class="timeline-action">{{ act.action }}</div>
+                      <div class="timeline-detail">{{ act.detail }}</div>
+                      <div class="timeline-time mono">{{ act.created_at | date:'medium' }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Card Bottom Bar: Flow Action Buttons -->
+            <div class="card-footer-controls">
+              <span class="footer-label">Workflow Action:</span>
+              <div class="footer-btns">
+                <!-- FLOW STEP 1: 'new' -> Only show 'Move to Docs Pending' -->
+                <button *ngIf="client.status === 'new'"
+                  class="btn btn-sm btn-primary" (click)="updateClientStatus(client.id, 'docs_pending')"
+                  title="Advance flow: Start document collection">
+                  <i class="fa-solid fa-hourglass-half"></i> Move to Docs Pending
+                </button>
+
+                <!-- FLOW STEP 2: 'docs_pending' -> Only show 'Move to Ready for Review' -->
+                <button *ngIf="client.status === 'docs_pending'"
+                  class="btn btn-sm btn-primary" (click)="updateClientStatus(client.id, 'ready_for_review')"
+                  title="Advance flow: Move to staff document review">
+                  <i class="fa-solid fa-magnifying-glass-chart"></i> Move to Ready for Review
+                </button>
+
+                <!-- FLOW STEP 3: 'ready_for_review' -> Staff reviews documents -->
+                <!-- Case A: All checklist docs reviewed & marked correct -> Show 'Complete Onboarding' -->
+                <button *ngIf="client.status === 'ready_for_review' && getCompletedChecklistCount(client) === getTotalChecklistCount(client) && getTotalChecklistCount(client) > 0"
+                  class="btn btn-sm btn-success animate-pulse-subtle" (click)="updateClientStatus(client.id, 'onboarded')"
+                  title="Advance flow: Complete onboarding for this client">
+                  <i class="fa-solid fa-circle-check"></i> Complete Onboarding
+                </button>
+
+                <!-- Case B: A document was marked wrong or not verified -> Revert to Docs Pending -->
+                <button *ngIf="client.status === 'ready_for_review' && getCompletedChecklistCount(client) < getTotalChecklistCount(client)"
+                  class="btn btn-sm btn-outline warning" (click)="updateClientStatus(client.id, 'docs_pending')"
+                  title="Doc marked wrong: Return to document collection">
+                  <i class="fa-solid fa-rotate-left"></i> Return to Docs Pending
+                </button>
+                <span *ngIf="client.status === 'ready_for_review' && getCompletedChecklistCount(client) < getTotalChecklistCount(client)"
+                  class="review-pending-hint">
+                  <i class="fa-solid fa-shield-halved text-warning"></i> Verify all checklist docs to enable Onboarding
+                </span>
+
+                <!-- FLOW STEP 4: 'onboarded' -> Onboarding Finalized -->
+                <div *ngIf="client.status === 'onboarded'" class="onboarded-status-tag">
+                  <span class="onboarded-pill"><i class="fa-solid fa-circle-check"></i> Onboarding Completed</span>
+                  <button class="btn btn-sm btn-outline text-muted" (click)="updateClientStatus(client.id, 'ready_for_review')" title="Reopen review">
+                    <i class="fa-solid fa-rotate-left"></i> Reopen Review
+                  </button>
+                </div>
+
+                <!-- EXCEPTION STATE: 'needs_review' -> Resolution choices -->
+                <ng-container *ngIf="client.status === 'needs_review'">
+                  <button class="btn btn-sm btn-outline warning" (click)="updateClientStatus(client.id, 'docs_pending')"
+                    title="Return to document collection">
+                    <i class="fa-solid fa-rotate-left"></i> Move to Docs Pending
+                  </button>
+                  <button class="btn btn-sm btn-primary" (click)="updateClientStatus(client.id, 'ready_for_review')"
+                    title="Issues resolved: Move to Ready for Review">
+                    <i class="fa-solid fa-magnifying-glass-chart"></i> Move to Ready for Review
+                  </button>
+                </ng-container>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: APPROVAL CENTER ==================== -->
+    <section *ngIf="activeTab === 'approvals'" class="tab-pane animate-fade-in">
+      <div class="section-hero">
+        <div class="hero-text">
+          <h2><i class="fa-solid fa-shield-halved"></i> Human-in-the-Loop Message Approval Center</h2>
+          <p>
+            Regulatory Compliance Safeguard: <strong>Zero messages are dispatched automatically</strong>. Every client
+            email or WhatsApp follow-up must be reviewed and approved by staff.
+          </p>
+        </div>
+      </div>
+
+      <div class="approval-grid">
+        <div class="approval-card" *ngFor="let item of allMessages" [class.is-draft]="item.message.status === 'draft'">
+          <div class="approval-card-top">
+            <div class="client-info-mini">
+              <strong>{{ item.client.name }}</strong>
+              <span class="mono">({{ item.client.email }})</span>
+            </div>
+            <div class="approval-badges">
+              <span class="badge" [class.badge-service-itr]="item.message.channel === 'email'"
+                [class.badge-service-gst]="item.message.channel === 'whatsapp'">
+                <i class="fa-regular fa-envelope" *ngIf="item.message.channel === 'email'"></i>
+                <i class="fa-brands fa-whatsapp" *ngIf="item.message.channel === 'whatsapp'"></i>
+                {{ item.message.channel | uppercase }}
+              </span>
+              <span class="badge" [class.badge-docs_pending]="item.message.status === 'draft'"
+                [class.badge-ready_for_review]="item.message.status === 'approved'"
+                [class.badge-onboarded]="item.message.status === 'sent'">
+                {{ item.message.status | uppercase }}
+              </span>
+            </div>
+          </div>
+
+          <div class="approval-subject">
+            <strong>Subject:</strong> {{ item.message.subject }}
+          </div>
+
+          <div class="approval-body-box">
+            <pre>{{ item.message.body }}</pre>
+          </div>
+
+          <div class="approval-meta" *ngIf="item.message.approved_by">
+            <i class="fa-solid fa-user-check"></i> Approved by {{ item.message.approved_by }} on {{
+            item.message.approved_at | date:'short' }}
+          </div>
+
+          <div class="approval-actions-bar">
+            <button class="btn btn-outline btn-sm" (click)="startEditMessage(item.message)">
+              <i class="fa-solid fa-pen-to-square"></i> Edit Content
+            </button>
+            <button *ngIf="item.message.status === 'draft'" class="btn btn-primary btn-sm"
+              (click)="approveMessage(item.message)">
+              <i class="fa-solid fa-check-double"></i> Approve Message
+            </button>
+            <button *ngIf="item.message.status === 'approved'" class="btn btn-success btn-sm"
+              (click)="sendMessage(item.message)">
+              <i class="fa-solid fa-paper-plane" *ngIf="item.message.channel === 'email'"></i>
+              <i class="fa-brands fa-whatsapp" *ngIf="item.message.channel === 'whatsapp'"></i>
+              {{ item.message.channel === 'whatsapp' ? 'Open & Send in WhatsApp' : 'Dispatch Now' }}
+            </button>
+            <a *ngIf="item.message.channel === 'whatsapp' && (item.message.status === 'approved' || item.message.status === 'sent') && getWhatsAppUrl(item.message, item.client)"
+              [href]="getWhatsAppUrl(item.message, item.client)" target="_blank" class="btn btn-sm btn-whatsapp"
+              title="Open chat directly in WhatsApp Web">
+              <i class="fa-brands fa-whatsapp"></i> Chat Link
+            </a>
+            <button *ngIf="item.message.status === 'draft'" class="btn btn-danger-outline btn-sm"
+              (click)="rejectMessage(item.message)">
+              <i class="fa-solid fa-ban"></i> Reject
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: OCR EXTRACTION HUB ==================== -->
+    <section *ngIf="activeTab === 'documents'" class="tab-pane animate-fade-in">
+      <div class="section-hero">
+        <div class="hero-text">
+          <h2><i class="fa-solid fa-brain"></i> Document Intelligence & OCR Extraction Hub</h2>
+          <p>
+            Autonomous extraction from PAN, Aadhaar, GST Certificates, and Bank Statements. Low-confidence scans (<60%)
+              and format anomalies are explicitly flagged rather than guessed. </p>
+        </div>
+      </div>
+
+      <div class="doc-intelligence-grid">
+        <div class="intelligence-card" *ngFor="let item of allDocuments"
+          [class.has-issues]="item.doc.flags && item.doc.flags.length > 0">
+          <div class="intel-header">
+            <div>
+              <h3>{{ item.doc.doc_type }}</h3>
+              <div class="intel-client">Client: {{ item.client.name }} · <span class="mono">{{ item.doc.filename
+                  }}</span></div>
+            </div>
+            <div class="confidence-pill" [class.low-conf]="item.doc.confidence < 0.60">
+              <i class="fa-solid fa-bolt"></i>
+              <span>OCR Confidence: {{ (item.doc.confidence * 100) | number:'1.0-0' }}%</span>
+            </div>
+          </div>
+
+          <!-- Anomalies & Mismatches -->
+          <div class="intel-flags-box" *ngIf="item.doc.flags && item.doc.flags.length > 0">
+            <div class="intel-flag" *ngFor="let f of item.doc.flags">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>{{ f.issue || f.message }}</span>
+            </div>
+          </div>
+
+          <!-- Extracted Fields -->
+          <div class="intel-fields">
+            <h4>Extracted Metadata:</h4>
+            <div class="intel-field-table">
+              <div class="intel-row" *ngFor="let field of item.doc.extracted | keyvalue">
+                <span class="intel-key">{{ formatFieldLabel(field.key) }}:</span>
+                <span class="intel-value mono">{{ field.value }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="intel-footer">
+            <button type="button" class="btn btn-outline btn-sm" (click)="openDocumentModal(item.doc)">
+              <i class="fa-solid fa-eye"></i> Inspect Original Artifact
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: AUDIT ACTIVITY TRAIL ==================== -->
+    <section *ngIf="activeTab === 'audit'" class="tab-pane animate-fade-in">
+      <div class="section-hero">
+        <div class="hero-text">
+          <h2><i class="fa-solid fa-clock-rotate-left"></i> System Audit & Governance Log</h2>
+          <p>Immutable record of every ingestion event, OCR recognition, staff approval, and message dispatch.</p>
+        </div>
+      </div>
+
+      <div class="global-audit-list">
+        <div class="audit-card" *ngFor="let client of clients">
+          <div class="audit-client-title">
+            <i class="fa-solid fa-user"></i> {{ client.name }} ({{ client.service }} – {{ client.email }})
+          </div>
+          <div class="audit-entries">
+            <div class="audit-entry" *ngFor="let act of client.activity">
+              <div class="entry-time mono">{{ act.created_at | date:'medium' }}</div>
+              <div class="entry-action-badge">{{ act.action }}</div>
+              <div class="entry-detail">{{ act.detail }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Centered Modal Host Container (All modals opened centered via ModalService using ng-template) -->
+  <div class="modal-backdrop" *ngIf="modalService.isOpen" (click)="onBackdropClick($event)">
+    <div class="modal-center-container" (click)="$event.stopPropagation()">
+      <ng-container *ngTemplateOutlet="modalService.currentTemplate; context: modalService.context"></ng-container>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 1: DOCUMENT INSPECTION MODAL ==================== -->
+  <ng-template #docPreviewModal>
+    <div class="modal-window modal-xl animate-scale-in">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3>
+            <i class="fa-regular fa-file-pdf text-danger" *ngIf="isPdf(previewDoc?.filename)"></i>
+            <i class="fa-regular fa-file-image text-primary" *ngIf="!isPdf(previewDoc?.filename)"></i>
+            <span>{{ previewDoc?.doc_type || 'Document Inspection' }}</span>
+            <span class="modal-doc-filename mono">({{ previewDoc?.filename }})</span>
+          </h3>
+          <p class="modal-subtitle">
+            Verified server artifact viewer with OCR extraction metadata and anomaly diagnostics.
+          </p>
+        </div>
+
+        <div class="modal-header-actions">
+          <!-- OCR Confidence Meter -->
+          <div class="confidence-tag" *ngIf="previewDoc" [class.low-conf]="previewDoc.confidence < 0.60">
+            <i class="fa-solid fa-bolt"></i>
+            <span>OCR: {{ (previewDoc.confidence * 100) | number:'1.0-0' }}%</span>
+          </div>
+          <button type="button" class="modal-close" (click)="closeActiveModal()" title="Close">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body modal-doc-body">
+        <!-- Visual Document Viewer -->
+        <div class="doc-viewer-container">
+          <!-- Image Document Preview -->
+          <div class="doc-image-wrapper" *ngIf="!isPdf(previewDoc?.filename)">
+            <img [src]="previewDocUrl" [alt]="previewDoc?.filename" class="preview-img" />
+          </div>
+
+          <!-- PDF Document Preview -->
+          <div class="doc-pdf-wrapper" *ngIf="isPdf(previewDoc?.filename)">
+            <iframe [src]="previewSafeDocUrl" class="preview-iframe" title="PDF Document Viewer"></iframe>
+          </div>
+        </div>
+
+        <!-- Document Metadata & Intelligence Sidebar -->
+        <div class="doc-meta-sidebar">
+          <!-- Anomaly Flags -->
+          <div class="modal-anomalies" *ngIf="previewDoc?.flags && previewDoc!.flags.length > 0">
+            <div class="anomaly-heading">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>Inspection Flags Detected</span>
+            </div>
+            <div class="anomaly-pill-item" *ngFor="let flag of previewDoc!.flags">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span>{{ flag.issue || flag.message }}</span>
+            </div>
+          </div>
+
+          <!-- Extracted Fields -->
+          <div class="modal-meta-box">
+            <div class="meta-heading">
+              <i class="fa-solid fa-brain"></i>
+              <span>Extracted Metadata</span>
+            </div>
+            <div class="meta-fields-list" *ngIf="previewDoc?.extracted && (previewDoc!.extracted | json) !== '{}'">
+              <div class="meta-field-item" *ngFor="let field of previewDoc!.extracted | keyvalue">
+                <span class="meta-field-label">{{ formatFieldLabel(field.key) }}:</span>
+                <span class="meta-field-val mono">{{ field.value }}</span>
+              </div>
+            </div>
+            <div class="empty-subtext" *ngIf="!previewDoc?.extracted || (previewDoc!.extracted | json) === '{}'">
+              No metadata fields extracted.
+            </div>
+          </div>
+
+          <!-- Document Properties -->
+          <div class="modal-meta-box">
+            <div class="meta-heading">
+              <i class="fa-solid fa-circle-info"></i>
+              <span>Artifact Details</span>
+            </div>
+            <div class="meta-fields-list">
+              <div class="meta-field-item">
+                <span class="meta-field-label">File Type:</span>
+                <span class="meta-field-val">{{ isPdf(previewDoc?.filename) ? 'PDF Document' : 'Image Scan' }}</span>
+              </div>
+              <div class="meta-field-item">
+                <span class="meta-field-label">OCR Status:</span>
+                <span class="meta-field-val" [class.text-danger]="previewDoc && previewDoc.confidence < 0.60"
+                  [class.text-success]="previewDoc && previewDoc.confidence >= 0.60">
+                  {{ previewDoc && previewDoc.confidence < 0.60 ? 'Low Confidence (Flagged)'
+                    : 'High Confidence Verified' }} </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <a [href]="previewDocUrl" target="_blank" class="btn btn-outline btn-sm">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in New Tab
+        </a>
+        <button type="button" class="btn btn-primary btn-sm" (click)="closeActiveModal()">
+          <i class="fa-solid fa-check"></i> Done Inspecting
+        </button>
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- ==================== MODAL 2: EDIT MESSAGE MODAL ==================== -->
+  <ng-template #editMessageModal>
+    <div class="modal-window animate-scale-in">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-pen-nib"></i> Edit Follow-up Draft</h3>
+        <button class="modal-close" (click)="cancelEdit()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Subject Line:</label>
+          <input type="text" [(ngModel)]="editSubject" />
+        </div>
+        <div class="form-group">
+          <label>Message Content:</label>
+          <textarea rows="6" [(ngModel)]="editBody"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="cancelEdit()">Cancel</button>
+        <button class="btn btn-primary" (click)="saveEditMessage()">
+          <i class="fa-solid fa-floppy-disk"></i> Save Changes
+        </button>
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- ==================== MODAL 3: PRODUCTION EMAIL INBOX SETUP ==================== -->
+  <ng-template #inboxSetupModal>
+    <div class="modal-window modal-lg animate-scale-in">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3><i class="fa-solid fa-envelope-circle-check"></i> Production Email Inbox Configuration</h3>
+          <p class="modal-subtitle">Connect your CA firm's real email inbox (Gmail, Outlook 365, Zoho, or corporate
+            IMAP) to automatically receive, parse, and onboard client emails with attached documents.</p>
+        </div>
+        <button class="modal-close" (click)="closeInboxModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Preset Provider Selector -->
+        <div class="form-group">
+          <label>Email Provider Preset:</label>
+          <div class="provider-pill-grid">
+            <button type="button" class="provider-pill" [class.selected]="formProvider === 'gmail'"
+              (click)="onProviderChange('gmail')">
+              <i class="fa-brands fa-google"></i> Google / Gmail
+            </button>
+            <button type="button" class="provider-pill" [class.selected]="formProvider === 'outlook'"
+              (click)="onProviderChange('outlook')">
+              <i class="fa-brands fa-microsoft"></i> Microsoft 365
+            </button>
+            <button type="button" class="provider-pill" [class.selected]="formProvider === 'zoho'"
+              (click)="onProviderChange('zoho')">
+              <i class="fa-solid fa-briefcase"></i> Zoho Mail
+            </button>
+            <button type="button" class="provider-pill" [class.selected]="formProvider === 'custom'"
+              (click)="onProviderChange('custom')">
+              <i class="fa-solid fa-server"></i> Custom IMAP
+            </button>
+          </div>
+        </div>
+
+        <!-- Provider Note / Instructions -->
+        <div class="provider-note-box" *ngIf="inboxPresets[formProvider]?.note">
+          <i class="fa-solid fa-circle-info"></i>
+          <span>{{ inboxPresets[formProvider].note }}</span>
+        </div>
+
+        <!-- Connection Settings Grid -->
+        <div class="settings-form-grid">
+          <div class="form-group">
+            <label>IMAP Server Host:</label>
+            <input type="text" [(ngModel)]="formHost" placeholder="e.g. imap.gmail.com" />
+          </div>
+
+          <div class="form-group">
+            <label>Port:</label>
+            <input type="number" [(ngModel)]="formPort" placeholder="993" />
+          </div>
+
+          <div class="form-group">
+            <label>Firm Email / Username:</label>
+            <input type="email" [(ngModel)]="formUsername" placeholder="e.g. onboarding@firm.com" />
+          </div>
+
+          <div class="form-group">
+            <label>Password / App Password:</label>
+            <input type="password" [(ngModel)]="formPassword" placeholder="••••••••••••••••" />
+            <span class="field-hint" *ngIf="inboxSettings?.password_set && !formPassword">✓ Password is already saved
+              securely</span>
+          </div>
+
+          <div class="form-group">
+            <label>Mailbox Folder / Label:</label>
+            <input type="text" [(ngModel)]="formFolder" placeholder="INBOX" />
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formUseSsl" />
+              <span>Use SSL/TLS Encryption (Recommended)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Test Connection Output -->
+        <div class="test-feedback-box" *ngIf="testResult">
+          <div class="test-alert success" *ngIf="testResult.ok">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>{{ testResult.message }}</span>
+          </div>
+          <div class="test-alert error" *ngIf="!testResult.ok">
+            <i class="fa-solid fa-circle-xmark"></i>
+            <span>{{ testResult.error }}</span>
+          </div>
+        </div>
+
+        <!-- Strict Service Intake Filter Indicator -->
+        <div class="service-filter-box">
+          <div class="service-filter-header">
+            <div class="filter-header-left">
+              <i class="fa-solid fa-filter"></i>
+              <strong>Required Services Filter:</strong>
+            </div>
+            <span class="strict-pill"><i class="fa-solid fa-shield"></i> Active</span>
+          </div>
+          <p class="filter-desc">
+            Direct fetch automatically inspects email subject and body to only ingest requests for these CA services:
+          </p>
+          <div class="allowed-service-chips">
+            <span class="allowed-chip gst"><i class="fa-solid fa-check"></i> GST (Registration, Returns, GSTIN)</span>
+            <span class="allowed-chip itr"><i class="fa-solid fa-check"></i> ITR (Income Tax Filing, Form 16)</span>
+            <span class="allowed-chip audit"><i class="fa-solid fa-check"></i> Audit (Tax & Statutory Audit)</span>
+          </div>
+          <div class="filter-footnote">
+            <i class="fa-solid fa-ban"></i> All other incoming emails (promotions, receipts, OTPs, personal) are safely
+            filtered out and ignored.
+          </div>
+        </div>
+
+        <!-- Live Sync Controls Section -->
+        <div class="modal-section-divider"></div>
+        <div class="sync-options-row">
+          <div class="sync-meta">
+            <strong>Direct Synchronization Settings:</strong>
+            <span *ngIf="inboxSettings?.last_synced">Last synced: {{ inboxSettings?.last_synced | date:'medium'
+              }}</span>
+          </div>
+          <div class="sync-controls">
+            <label>Batch Size:</label>
+            <select [(ngModel)]="formSyncLimit">
+              <option [ngValue]="5">5 emails</option>
+              <option [ngValue]="10">10 emails</option>
+              <option [ngValue]="25">25 emails</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="testInboxConnection()" [disabled]="isTestingInbox">
+          <i class="fa-solid fa-plug" [class.fa-spin]="isTestingInbox"></i>
+          <span>{{ isTestingInbox ? 'Testing Ping...' : 'Test Connection' }}</span>
+        </button>
+        <button class="btn btn-primary" (click)="saveInboxSettings()" [disabled]="loading">
+          <i class="fa-solid fa-floppy-disk"></i> Save Settings
+        </button>
+        <button class="btn btn-success" (click)="saveInboxSettings(); syncLiveInbox();" [disabled]="isSyncingInbox">
+          <i class="fa-solid fa-cloud-arrow-down" [class.fa-spin]="isSyncingInbox"></i>
+          <span>Save & Sync Now</span>
+        </button>
+      </div>
+
+    </div>
+  </ng-template>
+
+</div>
