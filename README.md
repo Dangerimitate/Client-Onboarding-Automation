@@ -1,10 +1,10 @@
 # 🏢 CA Onboard – Enterprise Client Onboarding & Compliance Automation OS
 
-[![Live on AWS](https://img.shields.io/badge/🌐_Live_Deployment-AWS_EC2-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](http://54.197.24.246)
-[![Watch Demo Video](https://img.shields.io/badge/▶%EF%B8%8F_Watch_Demo_Video-2--3_Min_Walkthrough-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://drive.google.com/file/d/1S8J7PndJGM4ljfTsBYPt_jxtSqi26KgI/view?usp=drive_link)
+[![Live Cloud Application](https://img.shields.io/badge/🚀_Live_Demo-AWS_Cloud_Active-success?style=for-the-badge&logo=amazon-aws&logoColor=white)](http://54.197.24.246)
+[![Watch Demo Video](https://img.shields.io/badge/▶%EF%B8%8F_Demo_Video-Google_Drive-FF0000?style=for-the-badge&logo=google-drive&logoColor=white)](https://drive.google.com/file/d/1S8J7PndJGM4ljfTsBYPt_jxtSqi26KgI/view?usp=drive_link)
 
-> 🚀 **Live Production Application:** [http://54.197.24.246](http://54.197.24.246)  
-> 📺 **Video Demonstration:** [Google Drive Walkthrough](https://drive.google.com/file/d/1S8J7PndJGM4ljfTsBYPt_jxtSqi26KgI/view?usp=drive_link)
+> 🌐 **Live Cloud Deployment (AWS EC2):** [http://54.197.24.246](http://54.197.24.246)  
+> *Fully hosted and running on AWS EC2 (Ubuntu 24.04 LTS, Nginx Reverse Proxy, Gunicorn WSGI, Flask MVC & Angular 17+ SPA).*
 
 An enterprise-grade client onboarding automation platform designed for Chartered Accountant (CA) firms, built with an **Angular 17+ Frontend** and a **Python Flask MVC (Model-View-Controller) Backend**.
 
@@ -97,9 +97,9 @@ Open **`http://localhost:4200`** in your browser.
 
 ### ☁️ AWS Cloud Production Deployment Guide (100% Free Tier)
 
-> 🌐 **Live EC2 Production Instance:** [http://54.197.24.246](http://54.197.24.246)
+> 🚀 **Live Production URL:** [http://54.197.24.246](http://54.197.24.246)
 
-This platform is configured and deployed for production hosting on **Amazon Web Services (AWS)** using standard, secure enterprise patterns.
+This platform is configured for production hosting on **Amazon Web Services (AWS)** using standard, secure enterprise patterns.
 
 #### Architecture:
 - **Compute:** AWS EC2 (`t2.micro` – Free Tier eligible, 750 hrs/month) on Ubuntu 24.04 LTS.
