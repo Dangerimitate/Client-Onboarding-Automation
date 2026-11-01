@@ -290,8 +290,8 @@
                       <span class="chk-pill" [class.received-pill]="item.received === 1" [class.rejected-pill]="item.received === 0 && hasUploadedDoc(client, item.doc_type)">
                         {{ item.received === 1 ? 'Received' : (hasUploadedDoc(client, item.doc_type) ? 'Flagged / Check Scan' : 'Pending Client') }}
                       </span>
-                      <!-- CA Staff Manual Override: ONLY shown if document has actually been uploaded from client -->
-                      <ng-container *ngIf="hasUploadedDoc(client, item.doc_type)">
+                      <!-- CA Staff Manual Override: ONLY shown if document has actually been uploaded from client AND client is not yet onboarded -->
+                      <ng-container *ngIf="client.status !== 'onboarded' && hasUploadedDoc(client, item.doc_type)">
                         <button *ngIf="item.received === 0" type="button" class="btn-chk-action btn-mark-correct"
                           (click)="markChecklistItem(item, 1, client, $event)"
                           title="Staff Override: Mark uploaded document as Verified / Correct (Override OCR)">

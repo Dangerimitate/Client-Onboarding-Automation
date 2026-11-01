@@ -278,6 +278,9 @@ export class AppComponent implements OnInit {
     if (event) {
       event.stopPropagation();
     }
+    if (client.status === 'onboarded') {
+      return; // Cannot modify checklist of an already onboarded client
+    }
     const actionLabel = received === 1 ? 'Verified (Correct)' : 'Wrong / Rejected';
     this.loading = true;
     this.api.updateChecklistItem(item.id, received, 'CA staff manual override').subscribe({
