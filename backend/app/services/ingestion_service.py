@@ -70,14 +70,16 @@ class IngestionService:
         if ph:
             phone = re.sub(r'\s', '', ph.group(1))
 
-        if not service:
-            # Strict Service Filter: only detect GST, ITR, or Audit
-            if re.search(r'\b(gst|gstin|gstr|gstr1|gstr3b|goods\s+and\s+services?\s+tax)\b', body, re.IGNORECASE):
-                service = "GST"
-            elif re.search(r'\b(itr|itr1|itr2|itr3|itr4|income\s*tax|tax\s*return|tax\s*filing|form\s*16|form\s*26as|salary\s*slip)\b', body, re.IGNORECASE):
-                service = "ITR"
-            elif re.search(r'\b(audit|auditing|tax\s*audit|statutory\s*audit|internal\s*audit|balance\s*sheet|p&l)\b', body, re.IGNORECASE):
-                service = "Audit"
+        # Strict Service Filter: detect explicit service intent in body first
+        detected_service = ""
+        if re.search(r'\b(itr|itr1|itr2|itr3|itr4|income\s*tax|tax\s*return|tax\s*filing|form\s*16|form\s*26as|salary\s*slip)\b', body, re.IGNORECASE):
+            detected_service = "ITR"
+        elif re.search(r'\b(audit|auditing|tax\s*audit|statutory\s*audit|internal\s*audit|balance\s*sheet|p&l)\b', body, re.IGNORECASE):
+            detected_service = "Audit"
+        elif re.search(r'\b(gst|gstin|gstr|gstr1|gstr3b|goods\s+and\s+services?\s+tax)\b', body, re.IGNORECASE):
+            detected_service = "GST"
+
+        service = detected_service or default_service or ""
 
         gm = re.search(r'GSTIN\s+(\S+)', body, re.IGNORECASE)
         if gm:
@@ -116,6 +118,11 @@ class IngestionService:
         if duplicate:
             if not service:
                 service = duplicate.get("service") or ""
+            elif service and duplicate.get("service") != service:
+                # Client explicitly requested a new or different service (e.g. from GST to ITR)
+                ClientModel.update_service(conn, duplicate["id"], service)
+                ChecklistService.initialize_client_checklist(conn, duplicate["id"], service)
+                ActivityModel.log(conn, duplicate["id"], "service_updated", f"Service updated from {duplicate.get('service')} to {service} based on latest client email.")
             if not pan and duplicate.get("pan"):
                 pan = duplicate.get("pan") or ""
 
@@ -234,6 +241,26 @@ class IngestionService:
                     "issue": f"Unexpected document: '{doc_type}' is not part of required checklist for {service or 'client'} service."
                 })
 
+            # Clean single-document replacement: If a document of this type was already uploaded, replace it with the new one
+            if doc_type not in ("Electricity Bill", "Unknown"):
+                old_docs = conn.execute(
+                    "SELECT id, filepath FROM documents WHERE client_id = ? AND doc_type = ?",
+                    (client_id, doc_type)
+                ).fetchall()
+                for old in old_docs:
+                    try:
+                        old_path = Path(old["filepath"])
+                        if old_path.exists() and str(old_path) != str(dest):
+                            old_path.unlink()
+                    except Exception:
+                        pass
+                    conn.execute("DELETE FROM documents WHERE id = ?", (old["id"],))
+                if old_docs:
+                    ActivityModel.log(
+                        conn, client_id, "document_replaced",
+                        f"Replaced previous {doc_type} with new document ({att_file})"
+                    )
+
             doc_id = DocumentModel.create(
                 conn=conn,
                 client_id=client_id,
@@ -270,6 +297,11 @@ class IngestionService:
             if doc_type not in ("Electricity Bill", "Unknown") and not has_fatal_doc_error and doc_type.lower().strip() in checklist_doc_types:
                 ChecklistModel.mark_received(conn, client_id, doc_type, doc_id)
             elif has_fatal_doc_error:
+                # Link the newly uploaded document to the checklist item so staff can inspect the scan
+                conn.execute(
+                    "UPDATE checklist SET received = 0, doc_id = ? WHERE client_id = ? AND doc_type = ?",
+                    (doc_id, client_id, doc_type)
+                )
                 err_detail = doc_flags[0].get("issue") if doc_flags else "Validation failed"
                 ActivityModel.log(
                     conn, client_id, "document_flagged",

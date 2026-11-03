@@ -34,8 +34,18 @@ class ChecklistService:
     @classmethod
     def initialize_client_checklist(cls, conn, client_id: str, service_type: str):
         required_docs = cls.get_required_documents(service_type)
+        existing_items = ChecklistModel.get_by_client_id(conn, client_id)
+        existing_types = {item["doc_type"] for item in existing_items}
+
+        # Remove items from previous service that are not in new service and unfulfilled
+        for item in existing_items:
+            if item["doc_type"] not in required_docs and item["received"] == 0:
+                conn.execute("DELETE FROM checklist WHERE id = ?", (item["id"],))
+
+        # Add newly required checklist items
         for doc_type in required_docs:
-            ChecklistModel.create_item(conn, client_id, doc_type, required=1)
+            if doc_type not in existing_types:
+                ChecklistModel.create_item(conn, client_id, doc_type, required=1)
 
     @classmethod
     def is_checklist_complete(cls, conn, client_id: str) -> bool:

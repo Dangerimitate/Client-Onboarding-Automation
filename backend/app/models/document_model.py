@@ -5,12 +5,22 @@ from ..utils import uid, now_iso
 class DocumentModel:
     @staticmethod
     def get_by_client_id(conn, client_id: str) -> List[Dict]:
-        rows = conn.execute("SELECT * FROM documents WHERE client_id = ?", (client_id,)).fetchall()
+        rows = conn.execute(
+            "SELECT * FROM documents WHERE client_id = ? ORDER BY uploaded_at DESC, rowid DESC",
+            (client_id,)
+        ).fetchall()
         docs = []
+        seen_types = set()
         for r in rows:
             d = dict(r)
             d["extracted"] = json.loads(d["extracted"]) if d.get("extracted") else {}
             d["flags"] = json.loads(d["flags"]) if d.get("flags") else []
+            dt = d.get("doc_type", "")
+            # Return single authoritative document per recognized document type
+            if dt and dt not in ("Unknown", "Electricity Bill"):
+                if dt in seen_types:
+                    continue
+                seen_types.add(dt)
             docs.append(d)
         return docs
 

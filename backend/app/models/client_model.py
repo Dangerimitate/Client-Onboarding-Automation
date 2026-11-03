@@ -54,6 +54,13 @@ class ClientModel:
         )
 
     @staticmethod
+    def update_service(conn, client_id: str, new_service: str):
+        conn.execute(
+            "UPDATE clients SET service = ?, updated_at = ? WHERE id = ?",
+            (new_service, now_iso(), client_id)
+        )
+
+    @staticmethod
     def update_flags(conn, client_id: str, flags: List):
         conn.execute(
             "UPDATE clients SET flags = ?, updated_at = ? WHERE id = ?",

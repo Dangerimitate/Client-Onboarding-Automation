@@ -163,27 +163,30 @@ class EmailInboxService:
         """
         Strict service filter: Matches incoming emails explicitly requesting
         GST, ITR, or Audit onboarding services or submitting required documents.
+        Prioritizes explicit client message intent in body/subject over attachment filenames.
         Returns: 'GST', 'ITR', 'Audit', or None.
         """
-        text = f"{subject or ''}\n{body or ''}"
-        if attachments:
-            att_names = " ".join([a.get("filename", "") for a in attachments if isinstance(a, dict)])
-            text = f"{text}\n{att_names}"
+        # 1. First priority: Check direct email subject & body text written by client
+        header_text = re.sub(r'[_.\-/]', ' ', f"{subject or ''}\n{body or ''}")
 
-        # Normalize underscores, dashes, dots to spaces so regex \b matches in filenames like sample_pan_rahul.pdf
-        clean_text = re.sub(r'[_.\-/]', ' ', text)
-
-        # 1. GST patterns
-        if re.search(r'\b(gst|gstin|gstr|gstr1|gstr3b|goods\s+and\s+services?\s+tax)\b', clean_text, re.IGNORECASE):
+        if re.search(r'\b(itr|itr1|itr2|itr3|itr4|income\s*tax|tax\s*return|tax\s*filing|form\s*16|form\s*26as|salary\s*slip)\b', header_text, re.IGNORECASE):
+            return "ITR"
+        if re.search(r'\b(audit|auditing|tax\s*audit|statutory\s*audit|internal\s*audit|financial\s*audit|balance\s*sheet|p&l|profit\s*and\s*loss)\b', header_text, re.IGNORECASE):
+            return "Audit"
+        if re.search(r'\b(gst|gstin|gstr|gstr1|gstr3b|goods\s+and\s+services?\s+tax)\b', header_text, re.IGNORECASE):
             return "GST"
 
-        # 2. ITR patterns (including standard tax filing, proof, and salary documents)
-        if re.search(r'\b(itr|itr1|itr2|itr3|itr4|income\s*tax|tax\s*return|tax\s*filing|form\s*16|form\s*26as|salary\s*slip|salary|investment|investments|tax\s*saving|pan|aadhaar|bank\s*statement|statement)\b', clean_text, re.IGNORECASE):
-            return "ITR"
-
-        # 3. Audit patterns
-        if re.search(r'\b(audit|auditing|tax\s*audit|statutory\s*audit|internal\s*audit|financial\s*audit|balance\s*sheet|p&l|profit\s*and\s*loss)\b', clean_text, re.IGNORECASE):
-            return "Audit"
+        # 2. Second priority: Fall back to analyzing attachment filenames if body had no service keywords
+        if attachments:
+            att_names = re.sub(r'[_.\-/]', ' ', " ".join([a.get("filename", "") for a in attachments if isinstance(a, dict)]))
+            if re.search(r'\b(form\s*16|form16|salary|investment|investments|tax\s*saving)\b', att_names, re.IGNORECASE):
+                return "ITR"
+            if re.search(r'\b(balance\s*sheet|p&l|audit)\b', att_names, re.IGNORECASE):
+                return "Audit"
+            if re.search(r'\b(gst|gstin|gstr)\b', att_names, re.IGNORECASE):
+                return "GST"
+            if re.search(r'\b(pan|aadhaar|bank\s*statement)\b', att_names, re.IGNORECASE):
+                return "ITR"
 
         return None
 
@@ -317,8 +320,9 @@ class EmailInboxService:
                     if client_row:
                         existing_service = client_row["service"]
 
-                # Service Filter: existing client service OR matched service from text/attachments
-                service = existing_service or cls.match_service_intent(subject, full_body, attachments)
+                # Service Filter: prioritize explicit service intent from new email message; fall back to existing client service
+                detected_service = cls.match_service_intent(subject, full_body, attachments)
+                service = detected_service or existing_service
                 if not service:
                     # Ignore unrelated marketing/personal emails
                     continue
