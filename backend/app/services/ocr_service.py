@@ -212,7 +212,20 @@ class OCRService:
         return "Unknown"
 
     @staticmethod
-    def process_document(filename: str, expected_pan: str = "", filepath: str = "") -> Tuple[str, Dict, float, List[Dict]]:
+    def names_match(name1: str, name2: str) -> bool:
+        """Checks if two names share at least one meaningful token (first name or surname)."""
+        if not name1 or not name2:
+            return True
+        # Ignore generic words like "Mr", "Ms", "Dr", "M/s"
+        ignore = {"mr", "ms", "mrs", "dr", "shri", "smt", "m/s"}
+        w1 = {w.lower() for w in re.split(r'[\s.,]+', name1.strip()) if len(w) > 1 and w.lower() not in ignore}
+        w2 = {w.lower() for w in re.split(r'[\s.,]+', name2.strip()) if len(w) > 1 and w.lower() not in ignore}
+        if not w1 or not w2:
+            return True
+        return bool(w1.intersection(w2))
+
+    @staticmethod
+    def process_document(filename: str, expected_pan: str = "", filepath: str = "", expected_name: str = "") -> Tuple[str, Dict, float, List[Dict]]:
         """
         Executes OCR / digital extraction on a document file.
         Supports real PDF extraction (PyPDF2) with fallback to verified document signatures.
@@ -280,6 +293,12 @@ class OCRService:
                         "issue": f"PAN mismatch: email provides '{expected_pan}', but document has '{fields['pan']}'."
                     })
 
+            if fields.get("name") and expected_name and not OCRService.names_match(expected_name, fields["name"]):
+                flags.append({
+                    "field": "name",
+                    "issue": f"Name mismatch on PAN Card: Client record is '{expected_name}', but PAN belongs to '{fields['name']}'."
+                })
+
         # -----------------------------
         # 2. Aadhaar Card
         # -----------------------------
@@ -295,6 +314,12 @@ class OCRService:
                 flags.append({
                     "field": "aadhaar",
                     "issue": f"Invalid Aadhaar number: '{fields['aadhaar']}'. Must be 12 digits."
+                })
+
+            if fields.get("name") and expected_name and not OCRService.names_match(expected_name, fields["name"]):
+                flags.append({
+                    "field": "name",
+                    "issue": f"Name mismatch on Aadhaar Card: Client record is '{expected_name}', but Aadhaar belongs to '{fields['name']}'."
                 })
 
         # -----------------------------

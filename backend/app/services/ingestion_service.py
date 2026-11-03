@@ -215,11 +215,24 @@ class IngestionService:
             new_attachments_processed += 1
 
             # Run OCR extraction & field validation
+            client_record = ClientModel.get_by_id(conn, client_id)
+            current_client_name = client_record.get("name") if client_record else client_info.get("name", "")
+
             doc_type, fields, confidence, doc_flags = OCRService.process_document(
                 filename=att_file,
                 expected_pan=pan,
-                filepath=str(dest)
+                filepath=str(dest),
+                expected_name=current_client_name
             )
+
+            # Check if document type matches this client's service checklist requirements
+            checklist_items = ChecklistModel.get_by_client_id(conn, client_id)
+            checklist_doc_types = {item["doc_type"].lower().strip() for item in checklist_items}
+            if doc_type not in ("Electricity Bill", "Unknown") and doc_type.lower().strip() not in checklist_doc_types:
+                doc_flags.append({
+                    "field": "document_type",
+                    "issue": f"Unexpected document: '{doc_type}' is not part of required checklist for {service or 'client'} service."
+                })
 
             doc_id = DocumentModel.create(
                 conn=conn,
@@ -238,17 +251,23 @@ class IngestionService:
             )
 
             # Determine if document has blocking errors that prevent checklist fulfillment
-            has_fatal_doc_error = any(
-                "invalid" in f.get("issue", "").lower() or
-                "mismatch" in f.get("issue", "").lower() or
-                "not accepted" in f.get("issue", "").lower() or
-                "not an accepted" in f.get("issue", "").lower() or
-                "unrecognized" in f.get("issue", "").lower()
-                for f in doc_flags
+            has_fatal_doc_error = (
+                confidence < 0.60 or
+                any(
+                    "invalid" in f.get("issue", "").lower() or
+                    "mismatch" in f.get("issue", "").lower() or
+                    "not accepted" in f.get("issue", "").lower() or
+                    "not an accepted" in f.get("issue", "").lower() or
+                    "unrecognized" in f.get("issue", "").lower() or
+                    "unexpected" in f.get("issue", "").lower() or
+                    "low ocr" in f.get("issue", "").lower() or
+                    "blurry" in f.get("issue", "").lower()
+                    for f in doc_flags
+                )
             )
 
-            # Update checklist only if recognized, accepted, and valid document
-            if doc_type not in ("Electricity Bill", "Unknown") and not has_fatal_doc_error:
+            # Update checklist only if recognized, accepted, valid, and required document
+            if doc_type not in ("Electricity Bill", "Unknown") and not has_fatal_doc_error and doc_type.lower().strip() in checklist_doc_types:
                 ChecklistModel.mark_received(conn, client_id, doc_type, doc_id)
             elif has_fatal_doc_error:
                 err_detail = doc_flags[0].get("issue") if doc_flags else "Validation failed"
