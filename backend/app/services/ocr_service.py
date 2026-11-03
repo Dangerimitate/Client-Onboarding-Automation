@@ -3,6 +3,20 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import PyPDF2
+
+try:
+    import pytesseract  # type: ignore
+    from PIL import Image  # type: ignore
+    HAS_PYTESSERACT = True
+except Exception:
+    HAS_PYTESSERACT = False
+
+try:
+    import fitz  # type: ignore # PyMuPDF
+    HAS_FITZ = True
+except Exception:
+    HAS_FITZ = False
+
 from ..utils.validators import validate_pan, validate_aadhaar, validate_gstin
 
 # Simulated OCR knowledge base matching test dataset
@@ -190,24 +204,113 @@ class OCRService:
         return "", 0.0
 
     @staticmethod
+    def extract_text_from_image(filepath: str) -> Tuple[str, float]:
+        """Runs optical character recognition on an image file using Tesseract."""
+        if not HAS_PYTESSERACT or not filepath or not os.path.exists(filepath):
+            return "", 0.0
+        try:
+            with Image.open(filepath) as img:
+                text = pytesseract.image_to_string(img)
+                if text and text.strip():
+                    try:
+                        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+                        confs = [int(c) for c in data.get("conf", []) if str(c).isdigit() and int(c) >= 0]
+                        avg_conf = (sum(confs) / len(confs) / 100.0) if confs else 0.88
+                    except Exception:
+                        avg_conf = 0.88
+                    return text.strip(), max(0.2, min(0.99, avg_conf))
+        except Exception:
+            pass
+        return "", 0.0
+
+    @staticmethod
+    def extract_text_from_scanned_pdf(filepath: str) -> Tuple[str, float]:
+        """Renders pages of a scanned PDF and runs Tesseract OCR."""
+        if not HAS_PYTESSERACT or not HAS_FITZ or not filepath or not os.path.exists(filepath):
+            return "", 0.0
+        try:
+            doc = fitz.open(filepath)
+            full_text = []
+            for page in doc:
+                pix = page.get_pixmap(dpi=150)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                txt = pytesseract.image_to_string(img)
+                if txt.strip():
+                    full_text.append(txt.strip())
+            if full_text:
+                return "\n".join(full_text), 0.88
+        except Exception:
+            pass
+        return "", 0.0
+
+    @staticmethod
     def detect_document_type(filename: str, raw_text: str = "") -> str:
         fn = filename.lower()
         txt = raw_text.upper()
 
-        if "INCOME TAX DEPARTMENT" in txt or "pan" in fn:
-            return "PAN Card"
-        if ("GOVERNMENT OF INDIA" in txt and ("AADHAAR" in txt or "UNIQUE" in txt)) or "aadhaar" in fn:
-            return "Aadhaar Card"
-        if "GST REGISTRATION" in txt or "FORM GST" in txt or "gst" in fn:
-            return "GST Certificate"
-        if ("BANK" in txt and ("STATEMENT" in txt or "ACCOUNT" in txt or "BALANCE" in txt)) or "bank_statement" in fn or "bank" in fn:
-            return "Bank Statement"
-        if "FORM NO. 16" in txt or "FORM 16" in txt or "form16" in fn or "salary" in fn:
+        # 1. Form 16 / Salary Slips (Checked first because Form 16 contains Employee PAN number)
+        if (
+            "FORM NO. 16" in txt or 
+            "FORM 16" in txt or 
+            "CERTIFICATE U/S 203" in txt or 
+            "form16" in fn or 
+            "salary" in fn
+        ):
             return "Form 16 / Salary Slips"
-        if "INVESTMENT" in txt or "SECTION 80C" in txt or "DEDUCTION" in txt or "investment" in fn or "tax_saving" in fn:
+
+        # 2. Investment Proofs (Checked before PAN because investment proofs also contain PAN)
+        if (
+            "INVESTMENT" in txt or 
+            "SECTION 80C" in txt or 
+            "80C" in txt or 
+            "80D" in txt or 
+            "DEDUCTION" in txt or 
+            "investment" in fn or 
+            "tax_saving" in fn
+        ):
             return "Investment Proofs"
-        if "ELECTRICITY" in txt or "electricity" in fn:
+
+        # 3. GST Certificate
+        if (
+            "GST REGISTRATION" in txt or 
+            "FORM GST" in txt or 
+            "GOODS AND SERVICES TAX" in txt or 
+            re.search(r'\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b', txt) or
+            "gst" in fn
+        ):
+            return "GST Certificate"
+
+        # 4. Bank Statement
+        if (
+            ("BANK" in txt and ("STATEMENT" in txt or "ACCOUNT" in txt or "BALANCE" in txt or "IFSC" in txt)) or
+            "ACCOUNT STATEMENT" in txt or
+            "OPENING BALANCE" in txt or
+            "bank_statement" in fn or "bank" in fn
+        ):
+            return "Bank Statement"
+
+        # 5. Electricity Bill
+        if "ELECTRICITY" in txt or "POWER DISTRIBUTION" in txt or "electricity" in fn:
             return "Electricity Bill"
+
+        # 6. Aadhaar Card
+        if (
+            (("GOVERNMENT OF INDIA" in txt or "GOVT OF INDIA" in txt or "UIDAI" in txt or "UNIQUE IDENTIFICATION" in txt) and 
+             ("AADHAAR" in txt or "UNIQUE" in txt or "MERA AADHAAR" in txt)) or
+            re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', txt) or
+            "aadhaar" in fn or "aadhar" in fn
+        ):
+            return "Aadhaar Card"
+
+        # 7. PAN Card (Requires true PAN card headers or filename)
+        if (
+            "INCOME TAX DEPARTMENT" in txt or 
+            "PERMANENT ACCOUNT NUMBER" in txt or 
+            ("GOVT. OF INDIA" in txt and "INCOME TAX" in txt) or
+            ("FATHER" in txt and re.search(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', txt)) or
+            "pan" in fn
+        ):
+            return "PAN Card"
 
         return "Unknown"
 
@@ -242,8 +345,21 @@ class OCRService:
             if extracted_pdf_text:
                 raw_text = extracted_pdf_text
                 confidence = pdf_conf
+            else:
+                # Scanned PDF without text layer: try OCR rendering
+                scanned_pdf_text, scan_conf = OCRService.extract_text_from_scanned_pdf(filepath)
+                if scanned_pdf_text:
+                    raw_text = scanned_pdf_text
+                    confidence = scan_conf
 
-        # 2. If no text was extractable (e.g. image-based PDF or image file), check simulated OCR / knowledge base
+        # 2. Try real Image OCR if filepath is an image file (e.g. rahuldoc.png, photo.jpg)
+        elif filepath and any(filepath.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")) and os.path.exists(filepath):
+            img_text, img_conf = OCRService.extract_text_from_image(filepath)
+            if img_text:
+                raw_text = img_text
+                confidence = img_conf
+
+        # 3. If no text was extractable, check simulated OCR / knowledge base for sample pack files
         if not raw_text:
             ocr_data = SIMULATED_OCR.get(clean_name) or SIMULATED_OCR.get(filename)
             if not ocr_data:
@@ -278,8 +394,12 @@ class OCRService:
             if m: fields["father_name"] = m.group(1).strip()
             m = re.search(r'DOB:\s*([^\r\n]+)', raw_text)
             if m: fields["dob"] = m.group(1).strip()
-            m = re.search(r'PAN:\s*(\S+)', raw_text)
-            if m: fields["pan"] = m.group(1).strip()
+            pm = re.search(r'\b([A-Z]{5}[0-9]{4}[A-Z])\b', raw_text)
+            if pm:
+                fields["pan"] = pm.group(1).strip()
+            else:
+                m = re.search(r'PAN[:\s]+(\S+)', raw_text, re.IGNORECASE)
+                if m: fields["pan"] = m.group(1).strip()
 
             if fields.get("pan"):
                 if not validate_pan(fields["pan"]):
@@ -307,8 +427,12 @@ class OCRService:
             if m: fields["name"] = m.group(1).strip()
             m = re.search(r'DOB:\s*([^\r\n]+)', raw_text)
             if m: fields["dob"] = m.group(1).strip()
-            m = re.search(r'Aadhaar:\s*([\d\s]+)', raw_text)
-            if m: fields["aadhaar"] = m.group(1).strip()
+            am = re.search(r'\b(\d{4}\s\d{4}\s\d{4})\b', raw_text)
+            if am:
+                fields["aadhaar"] = am.group(1).strip()
+            else:
+                m = re.search(r'Aadhaar[:\s]+([\d\s]+)', raw_text, re.IGNORECASE)
+                if m: fields["aadhaar"] = m.group(1).strip()
 
             if fields.get("aadhaar") and not validate_aadhaar(fields["aadhaar"]):
                 flags.append({
